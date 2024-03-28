@@ -6,6 +6,7 @@ import pyaudio
 import threading
 import random
 import numpy as np
+import math
 
 def create_slider(frame, text, from_, to): #makes sliders. yum
     label = tk.Label(frame, text=text)
@@ -57,9 +58,10 @@ def pitch_shift(audio_data, input_value):
 
 # sequentially loads each slice into pydub's audio stream at a rate calculated by the bpm slider
 def play_slice(slice_index):
-    if slices:
+    global slices_fr
+    if slices_fr:
         slice_duration_ms = (60 / tempo_slider.get()) * 250  # duration of a sixteenth note in milliseconds from bpm
-        slice = slices[slice_index]
+        slice = slices_fr[slice_index]
 
         # crops audio to fit the length of a sixteenth note by either padding with silence or by cutting it off
         if len(slice) < slice_duration_ms:
@@ -70,25 +72,105 @@ def play_slice(slice_index):
             cropped_slice = slice[:slice_duration_ms]
         stream.write(cropped_slice.raw_data)
 
+# THIS TOOK SO LONG TO TUNE
+def fill_seed(chaos_parameter, bar_count): 
+    numbers = [0, 1, 2, 3, 4]
+    unscaled_probabilities = []
+    for i in range(5):
+        if bar_count == 7:
+            unscaled_probabilities.append(math.exp(i*chaos_parameter))
+        elif bar_count == 3:
+            unscaled_probabilities.append(math.exp(i*(chaos_parameter - 0.2)))
+        elif bar_count == 1 or bar_count == 5:
+            unscaled_probabilities.append(math.exp(i*(chaos_parameter - 0.6)))
+    probabilities = [i / sum(unscaled_probabilities) for i in unscaled_probabilities]
+    number = random.choices(numbers, probabilities)[0]
+    print(probabilities)
+    binary_list = [1] * number + [0] * (4 - number)
+    random.shuffle(binary_list)
+    return binary_list
+
+def reverse(slices, i):
+    reversed = []
+    for slice in slices[i:i+4]:
+        reversed_audio_data = slice.reverse()
+        reversed.append(reversed_audio_data)
+    reversed.reverse()
+    result = slices[:i] + reversed + slices[i+4:]
+    return result
+
+def newpattern():
+    return reorder_slices(pitch_n_slice(input_audio))
+
+def stutter(slices, i): # use i = 0, 4, 8, or 12
+    thirtysecond_stutter = slices[i][:len(slices[i]) // 2] + slices[i][:len(slices[i]) // 2]
+    var1 = [slices[i], slices[i], slices[i], slices[i]]
+    var2 = [slices[i], slices[i], slices[i+2], slices[i+3]]
+    var3 = [slices[i], slices[i], slices[i+2], slices[i+2]]
+    var4 = [slices[i], slices[i], thirtysecond_stutter, thirtysecond_stutter]
+    stutter = random.choice([var1, var2, var3, var4])
+    result = slices[:i] + stutter + slices[i+4:]
+    return result
+
+def chop(slices, i):
+    fill = []
+    for j in range(i, i + 4):
+        slice = slices[j]
+        half_length = len(slice) // 2
+        silence = AudioSegment.silent(duration=half_length)
+        cut_slice = slice[:half_length] + silence
+        fill.append(cut_slice)
+    result = slices[:i] + fill + slices[i+4:]
+    return result
+
+def extended_dotted(slices):
+    return slices[10:] + slices[10:] + slices[10:14]
+
+def fill_selector(bar_count):
+    global slices, slices_fr
+    if bar_count == 7:
+        slices_fr = random.choice([slices, extended_dotted(slices), newpattern()])
+    if bar_count % 2 == 1:
+        print(bar_count)
+        reverse_seed = fill_seed(chaos_slider.get(), bar_count)
+        stutter_seed = fill_seed(chaos_slider.get(), bar_count)
+        chop_seed = fill_seed(chaos_slider.get(), bar_count)
+        for index, value in enumerate(reverse_seed):
+            if value == 1:
+                slices_fr = reverse(slices_fr, index*4)
+        for index, value in enumerate(stutter_seed):
+            if value == 1:
+                slices_fr = stutter(slices_fr, index*4)
+        for index, value in enumerate(chop_seed):
+            if value == 1:
+                slices_fr = chop(slices_fr, index*4)
+    else:
+        slices_fr = slices
+    return slices_fr
+
 # loops through slices infinitely to loop audio
 def play_loop(): 
-    global is_playing
+    global is_playing, slices_fr
+    bar_count = 0
+    sixteenth_note_count = 0
     while is_playing:
-        for slice_index in range(len(slices)):
+        slices_fr = fill_selector(bar_count)
+        for slice_index in range(len(slices_fr)):
             if not is_playing:
                 break
+            sixteenth_note_count += 1
+            bar_count = np.floor(sixteenth_note_count / 16) % 8
             play_slice(slice_index)
 
 # self explanatory, toggles play
 def toggle_play():
-    global is_playing, audio_slices, original_slices
+    global is_playing
     is_playing = not is_playing
     if is_playing:
         play_button.config(text="Pause")
         threading.Thread(target=play_loop).start()
     else:
         play_button.config(text="Play")
-
 
 # randomly selects quarter and dotted quarter note blocks of slices and arranges them into a new pattern
 def reorder_slices(original_slices):
@@ -156,7 +238,7 @@ def import_file():
                         output=True)
 
 def main():
-    global slices, original_slices, is_playing, tempo_slider, pitch_slider, play_button, stream, p, pitch_val
+    global slices, original_slices, slices_fr, is_playing, tempo_slider, pitch_slider, chaos_slider, play_button, stream, p, pitch_val
     pitch_val = 49
     slices = []
     original_slices = []
@@ -172,6 +254,7 @@ def main():
 
     tempo_slider = create_slider(controls_frame, "Tempo", 60, 180)
     pitch_slider = create_slider(controls_frame, "Pitch", 0, 99)
+    chaos_slider = create_slider(controls_frame, "Chaos", -1, 0.1)
     play_button = tk.Button(controls_frame, text="Play", height=2, width=10, command=toggle_play)
     play_button.pack(side=tk.LEFT, padx=5)
     
