@@ -56,6 +56,31 @@ def pitch_shift(audio_data, input_value):
 
     return new_audio_data
 
+# randomly selects quarter and dotted quarter note blocks of slices and arranges them into a new pattern
+def reorder_slices(original_slices):
+    dotted_start_seed = random.randint(0, 5)
+    quarter_start_seed = random.randint(0, 6)
+    accent_dotted_seed = random.randint(0, 5)
+
+    dotted_start_index = dotted_start_seed * 2
+    quarter_start_index = quarter_start_seed * 2
+    accent_dotted_index = accent_dotted_seed * 2
+
+    dotted = original_slices[dotted_start_index:dotted_start_index + 6]
+    quarter = original_slices[quarter_start_index:quarter_start_index + 4]
+    accent = original_slices[accent_dotted_index:accent_dotted_index + 6]
+    accent = random.choice([accent, dotted])
+
+    base_order = random.choice([[quarter, dotted, dotted], [dotted, quarter, dotted], [dotted, dotted, quarter]])
+    secondary_order = random.choice([[dotted, dotted, accent[:4]], [dotted[:4], quarter, accent, accent[:2]], [quarter, quarter, accent, accent[:2]], base_order])
+
+    bar_one = [item for sublist in base_order for item in sublist]
+    bar_two = [item for sublist in secondary_order for item in sublist]
+
+    reordered_slices = bar_one + bar_two
+
+    return reordered_slices
+
 # sequentially loads each slice into pydub's audio stream at a rate calculated by the bpm slider
 def play_slice(slice_index):
     global slices_fr
@@ -80,12 +105,11 @@ def fill_seed(chaos_parameter, bar_count):
         if bar_count == 7:
             unscaled_probabilities.append(math.exp(i*chaos_parameter))
         elif bar_count == 3:
-            unscaled_probabilities.append(math.exp(i*(chaos_parameter - 0.2)))
+            unscaled_probabilities.append(math.exp(i*(chaos_parameter - .25)))
         elif bar_count == 1 or bar_count == 5:
-            unscaled_probabilities.append(math.exp(i*(chaos_parameter - 0.6)))
+            unscaled_probabilities.append(math.exp(i*(chaos_parameter - .4)))
     probabilities = [i / sum(unscaled_probabilities) for i in unscaled_probabilities]
     number = random.choices(numbers, probabilities)[0]
-    print(probabilities)
     binary_list = [1] * number + [0] * (4 - number)
     random.shuffle(binary_list)
     return binary_list
@@ -102,7 +126,7 @@ def reverse(slices, i):
 def newpattern():
     return reorder_slices(pitch_n_slice(input_audio))
 
-def stutter(slices, i): # use i = 0, 4, 8, or 12
+def stutter(slices, i):
     thirtysecond_stutter = slices[i][:len(slices[i]) // 2] + slices[i][:len(slices[i]) // 2]
     var1 = [slices[i], slices[i], slices[i], slices[i]]
     var2 = [slices[i], slices[i], slices[i+2], slices[i+3]]
@@ -123,38 +147,47 @@ def chop(slices, i):
     result = slices[:i] + fill + slices[i+4:]
     return result
 
-def extended_dotted(slices):
-    return slices[10:] + slices[10:] + slices[10:14]
+# def extended_dotted(slices):
+#     return slices[10:] + slices[10:] + slices[10:14]
 
-def fill_selector(bar_count):
-    global slices, slices_fr
-    if bar_count == 7:
-        slices_fr = random.choice([slices, extended_dotted(slices), newpattern()])
+def fill_selector(slicez, bar_count):
+    print(bar_count)
+    modified_slices = slicez[16:]
+    if bar_count % 4 == 3:
+        alt = newpattern()
+        modified_slices = random.choice([alt[16:], modified_slices, modified_slices])
     if bar_count % 2 == 1:
-        print(bar_count)
         reverse_seed = fill_seed(chaos_slider.get(), bar_count)
         stutter_seed = fill_seed(chaos_slider.get(), bar_count)
         chop_seed = fill_seed(chaos_slider.get(), bar_count)
+        #print(f'reverse = {reverse_seed}, stutter = {stutter_seed}, chop = {chop_seed} \n')
         for index, value in enumerate(reverse_seed):
             if value == 1:
-                slices_fr = reverse(slices_fr, index*4)
+                modified_slices = reverse(modified_slices, index*4)
         for index, value in enumerate(stutter_seed):
             if value == 1:
-                slices_fr = stutter(slices_fr, index*4)
+                modified_slices = stutter(modified_slices, index*4)
         for index, value in enumerate(chop_seed):
             if value == 1:
-                slices_fr = chop(slices_fr, index*4)
-    else:
-        slices_fr = slices
-    return slices_fr
+                modified_slices = chop(modified_slices, index*4)
+    slicez = slicez[:16] + modified_slices
+
+    return slicez
 
 # loops through slices infinitely to loop audio
 def play_loop(): 
-    global is_playing, slices_fr
+    global is_playing, slices_fr, regen_signal, original_slices, slices
     bar_count = 0
     sixteenth_note_count = 0
+    slices_fr = slices
+
     while is_playing:
-        slices_fr = fill_selector(bar_count)
+        if regen_signal == 1:
+            original_slices = pitch_n_slice(input_audio)
+            slices = reorder_slices(original_slices)
+        regen_signal = 0
+        slices_fr = slices
+        slices_fr = fill_selector(slices_fr, bar_count + 1)
         for slice_index in range(len(slices_fr)):
             if not is_playing:
                 break
@@ -172,25 +205,10 @@ def toggle_play():
     else:
         play_button.config(text="Play")
 
-# randomly selects quarter and dotted quarter note blocks of slices and arranges them into a new pattern
-def reorder_slices(original_slices):
-    dotted_start_seed = random.randint(0, 5)
-    quarter_start_seed = random.randint(0, 6)
-    dotted_start_index = dotted_start_seed * 2
-    quarter_start_index = quarter_start_seed * 2
-    dotted = original_slices[dotted_start_index:dotted_start_index + 6]
-    quarter = original_slices[quarter_start_index:quarter_start_index + 4]
-
-    order = random.choice([[quarter, dotted, dotted], [dotted, quarter, dotted], [dotted, dotted, quarter]])
-    reordered_slices = [item for sublist in order for item in sublist]
-
-    return reordered_slices
-
 # command for regenerate button. updates pitch value from slider and then regenerates a pattern using reorder_slices()
 def regenerate_pattern():
-    global slices, original_slices
-    original_slices = pitch_n_slice(input_audio)
-    slices = reorder_slices(original_slices)
+    global regen_signal
+    regen_signal = 1
 
 # applies pitch shift function and then re-splits the new audio. this is necessary because changing pitch also changes length.
 # uses a flag to check if the pitch slider's value has actually changed, so that the computation-heavy pitch shifting function
@@ -226,7 +244,7 @@ def import_file():
         not_equal_flag = 0
         prev_audio = None
         original_slices = pitch_n_slice(input_audio)
-        slices = original_slices
+        slices = original_slices + original_slices
         if stream is not None:
             stream.stop_stream()
             stream.close()
@@ -238,23 +256,25 @@ def import_file():
                         output=True)
 
 def main():
-    global slices, original_slices, slices_fr, is_playing, tempo_slider, pitch_slider, chaos_slider, play_button, stream, p, pitch_val
+    global slices, original_slices, slices_fr, is_playing, tempo_slider, pitch_slider, chaos_slider, play_button, stream, p, pitch_val, regen_signal
+    regen_signal = 0
     pitch_val = 49
     slices = []
+    slices_fr = []
     original_slices = []
     is_playing = False
     stream = None
     p = None
 
     root = tk.Tk()
-    root.title("skibidi breakcore")
+    root.title("BreakBuddy!")
 
     controls_frame = tk.Frame(root)
     controls_frame.pack(pady=10)
 
     tempo_slider = create_slider(controls_frame, "Tempo", 60, 180)
     pitch_slider = create_slider(controls_frame, "Pitch", 0, 99)
-    chaos_slider = create_slider(controls_frame, "Chaos", -1, 0.1)
+    chaos_slider = create_slider(controls_frame, "Chaos", -1.75, 0)
     play_button = tk.Button(controls_frame, text="Play", height=2, width=10, command=toggle_play)
     play_button.pack(side=tk.LEFT, padx=5)
     
