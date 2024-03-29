@@ -88,14 +88,21 @@ def play_slice(slice_index):
         slice_duration_ms = (60 / tempo_slider.get()) * 250  # duration of a sixteenth note in milliseconds from bpm
         slice = slices_fr[slice_index]
 
-        # crops audio to fit the length of a sixteenth note by either padding with silence or by cutting it off
+        fade_length_ms = 3  # Fade length in milliseconds
+
+        # Check if the slice needs to be cropped or padded
         if len(slice) < slice_duration_ms:
-            silence_duration = slice_duration_ms - len(slice)
+            # Apply fade effect before padding with silence
+            faded_slice = slice.fade_in(fade_length_ms).fade_out(fade_length_ms)
+            silence_duration = slice_duration_ms - len(faded_slice)
             silence = AudioSegment.silent(duration=silence_duration)
-            cropped_slice = slice + silence
+            final_slice = faded_slice + silence
         else:
+            # Crop the slice and apply fade effect
             cropped_slice = slice[:slice_duration_ms]
-        stream.write(cropped_slice.raw_data)
+            final_slice = cropped_slice.fade_in(fade_length_ms).fade_out(fade_length_ms)
+
+        stream.write(final_slice.raw_data)
 
 # THIS TOOK SO LONG TO TUNE
 def fill_seed(chaos_parameter, bar_count): 
@@ -137,30 +144,33 @@ def stutter(slices, i):
     return result
 
 def chop(slices, i):
+    fade_length_ms = 3  # Fade length in milliseconds
     fill = []
     for j in range(i, i + 4):
         slice = slices[j]
         half_length = len(slice) // 2
-        silence = AudioSegment.silent(duration=half_length)
-        cut_slice = slice[:half_length] + silence
+
+        # Apply fade effect before padding with silence
+        faded_slice = slice[:half_length].fade_in(fade_length_ms).fade_out(fade_length_ms)
+        
+        silence_duration = half_length - len(faded_slice)
+        silence = AudioSegment.silent(duration=silence_duration)
+        cut_slice = faded_slice + silence
         fill.append(cut_slice)
+
     result = slices[:i] + fill + slices[i+4:]
     return result
-
-# def extended_dotted(slices):
-#     return slices[10:] + slices[10:] + slices[10:14]
 
 def fill_selector(slicez, bar_count):
     print(bar_count)
     modified_slices = slicez[16:]
     if bar_count % 4 == 3:
         alt = newpattern()
-        modified_slices = random.choice([alt[16:], modified_slices, modified_slices])
+        modified_slices = random.choice([alt[16:], alt[:16], modified_slices, modified_slices])
     if bar_count % 2 == 1:
         reverse_seed = fill_seed(chaos_slider.get(), bar_count)
         stutter_seed = fill_seed(chaos_slider.get(), bar_count)
         chop_seed = fill_seed(chaos_slider.get(), bar_count)
-        #print(f'reverse = {reverse_seed}, stutter = {stutter_seed}, chop = {chop_seed} \n')
         for index, value in enumerate(reverse_seed):
             if value == 1:
                 modified_slices = reverse(modified_slices, index*4)
@@ -234,6 +244,7 @@ def pitch_n_slice(audio):
     slice_duration = len(pitched_audio) // 16
     slices = [pitched_audio[i * slice_duration:(i + 1) * slice_duration] for i in range(16)]
     return slices
+
 
 # handles inital setup when a new audio file is loaded
 def import_file():
