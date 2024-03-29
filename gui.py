@@ -200,10 +200,10 @@ def toggle_play():
     global is_playing
     is_playing = not is_playing
     if is_playing:
-        play_button.config(text="Pause")
+        play_button.config(text="Pause!")
         threading.Thread(target=play_loop).start()
     else:
-        play_button.config(text="Play")
+        play_button.config(text="Play!")
 
 # command for regenerate button. updates pitch value from slider and then regenerates a pattern using reorder_slices()
 def regenerate_pattern():
@@ -272,16 +272,16 @@ def main():
     controls_frame = tk.Frame(root)
     controls_frame.pack(pady=10)
 
-    tempo_slider = create_slider(controls_frame, "Tempo", 60, 180)
-    pitch_slider = create_slider(controls_frame, "Pitch", 0, 99)
-    chaos_slider = create_slider(controls_frame, "Chaos", -1.75, 0)
-    play_button = tk.Button(controls_frame, text="Play", height=2, width=10, command=toggle_play)
+    tempo_slider = create_slider(controls_frame, "Tempo!", 60, 180)
+    pitch_slider = create_slider(controls_frame, "Pitch!", 0, 99)
+    chaos_slider = create_slider(controls_frame, "Chaos!", -1.75, 0)
+    play_button = tk.Button(controls_frame, text="Play!", height=2, width=10, command=toggle_play)
     play_button.pack(side=tk.LEFT, padx=5)
     
-    regenerate_button = tk.Button(controls_frame, text="Regenerate", height=2, width=10, command=regenerate_pattern)
+    regenerate_button = tk.Button(controls_frame, text="Regenerate!", height=2, width=10, command=regenerate_pattern)
     regenerate_button.pack(side=tk.LEFT, padx=5)
 
-    import_button = tk.Button(controls_frame, text="Import File", height=2, width=10, command=import_file)
+    import_button = tk.Button(controls_frame, text="Import File!", height=2, width=10, command=import_file)
     import_button.pack(side=tk.LEFT, padx=5)
 
     root.mainloop()
